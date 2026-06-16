@@ -172,3 +172,100 @@ func (h *FileHandler) HandleToggleFileSaved(ctx context.Context, req *domain.Tog
 	}
 	return res, 200, nil
 }
+
+// Handle godoc
+//
+//	@Summary		Submit a YouTube link
+//	@Description	Submit a YouTube link to extract its transcript and make it available for chat.
+//	@Tags			Files
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		domain.SubmitYouTubeRequest	true	"Request body"
+//	@Success		200		{object}	domain.SubmitYouTubeResponse
+//	@Failure		400
+//	@Failure		500
+//	@Security		BearerAuth
+//	@Router			/files/youtube [post]
+func (h *FileHandler) HandleSubmitYouTube(ctx context.Context, req *domain.SubmitYouTubeRequest) (*domain.SubmitYouTubeResponse, int, error) {
+	userId := domain.GetUserID(ctx)
+
+	if req.Url == "" {
+		return nil, 400, fmt.Errorf("url is required")
+	}
+
+	res, err := h.fileService.SubmitYouTubeLink(ctx, userId, req.Url)
+	if err != nil {
+		return nil, 500, err
+	}
+
+	return res, 200, nil
+}
+
+// Handle godoc
+//
+//	@Summary		Extract notes from image
+//	@Description	Extract text notes from an uploaded image file using OCR.
+//	@Tags			Files
+//	@Accept			json
+//	@Produce		json
+//	@Param			id	path		string	true	"File ID"
+//	@Success		200	{object}	domain.ExtractNotesResponse
+//	@Failure		400
+//	@Failure		403
+//	@Failure		404
+//	@Failure		500
+//	@Security		BearerAuth
+//	@Router			/files/{id}/extract-notes [post]
+func (h *FileHandler) HandleExtractNotesFromImage(ctx context.Context, req *domain.ExtractNotesRequest) (*domain.ExtractNotesResponse, int, error) {
+	userId := domain.GetUserID(ctx)
+
+	res, err := h.fileService.ExtractNotesFromImage(ctx, userId, req.Id)
+	if err != nil {
+		if err == domain.ErrForbidden {
+			return nil, 403, err
+		}
+		if err == domain.ErrFileNotFound {
+			return nil, 404, err
+		}
+		return nil, 500, err
+	}
+
+	return res, 200, nil
+}
+
+// Handle godoc
+//
+//	@Summary		Update extracted notes
+//	@Description	Update the extracted text for a file and re-index it.
+//	@Tags			Files
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string						true	"File ID"
+//	@Param			request	body		domain.UpdateNotesRequest	true	"Request body"
+//	@Success		200		{object}	domain.UpdateNotesResponse
+//	@Failure		400
+//	@Failure		403
+//	@Failure		404
+//	@Failure		500
+//	@Security		BearerAuth
+//	@Router			/files/{id}/notes [put]
+func (h *FileHandler) HandleUpdateNotes(ctx context.Context, req *domain.UpdateNotesRequest) (*domain.UpdateNotesResponse, int, error) {
+	userId := domain.GetUserID(ctx)
+
+	if req.Text == "" {
+		return nil, 400, fmt.Errorf("text is required")
+	}
+
+	res, err := h.fileService.UpdateNotes(ctx, userId, req.Id, req.Text)
+	if err != nil {
+		if err == domain.ErrForbidden {
+			return nil, 403, err
+		}
+		if err == domain.ErrFileNotFound {
+			return nil, 404, err
+		}
+		return nil, 500, err
+	}
+
+	return res, 200, nil
+}

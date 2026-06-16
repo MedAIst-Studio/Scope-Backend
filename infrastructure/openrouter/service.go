@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/MedAIst-Studio/MedAIist-Backend/domain"
+	"github.com/kkdai/youtube/v2"
 )
 
 // Consts
@@ -813,6 +814,140 @@ func (s *OpenRouterService) ExtractTextFromImage(ctx context.Context, imageBase6
 
 	content, _ := apiResp.Choices[0].Message.Content.(string)
 	return content, nil
+}
+
+func (s *OpenRouterService) ExtractFromImage(ctx context.Context, imageBase64 string) (*domain.ExtractionResult, error) {
+	text, err := s.ExtractTextFromImage(ctx, imageBase64)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.ExtractionResult{
+		Text: text,
+	}, nil
+}
+
+type ytTranscript struct {
+	Events []struct {
+		Segs []struct {
+			Utf8 string `json:"utf8"`
+		} `json:"segs"`
+	} `json:"events"`
+}
+
+type headerTransport struct {
+	rt http.RoundTripper
+}
+
+func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	return t.rt.RoundTrip(req)
+}
+
+func (s *OpenRouterService) ExtractFromYouTube(ctx context.Context, url string) (*domain.ExtractionResult, error) {
+	client := youtube.Client{
+		HTTPClient: &http.Client{
+			Transport: &headerTransport{rt: http.DefaultTransport},
+		},
+	}
+	video, err := client.GetVideo(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get video info: %w", err)
+	}
+
+	title := video.Title
+	if title == "" {
+		title = "YouTube Video"
+	}
+
+	thumbnailUrl := ""
+	if len(video.Thumbnails) > 0 {
+		thumbnailUrl = video.Thumbnails[0].URL
+	} else {
+		// Fallback extraction
+		if strings.Contains(url, "v=") {
+			parts := strings.Split(url, "v=")
+			if len(parts) > 1 {
+				vidID := strings.Split(parts[1], "&")[0]
+				thumbnailUrl = fmt.Sprintf("https://img.youtube.com/vi/%s/hqdefault.jpg", vidID)
+			}
+		} else if strings.Contains(url, "youtu.be/") {
+			parts := strings.Split(url, "youtu.be/")
+			if len(parts) > 1 {
+				vidID := strings.Split(parts[1], "?")[0]
+				thumbnailUrl = fmt.Sprintf("https://img.youtube.com/vi/%s/hqdefault.jpg", vidID)
+			}
+		}
+	}
+
+	var rawTranscript string
+	if len(video.CaptionTracks) > 0 {
+		trackUrl := video.CaptionTracks[0].BaseURL
+		trackUrl = strings.Replace(trackUrl, "fmt=srv3", "fmt=json3", 1)
+
+		req, err := http.NewRequestWithContext(ctx, "GET", trackUrl, nil)
+		if err == nil {
+			resp, err := http.DefaultClient.Do(req)
+			if err == nil {
+				defer resp.Body.Close()
+				body, err := io.ReadAll(resp.Body)
+				if err == nil {
+					var t ytTranscript
+					if err := json.Unmarshal(body, &t); err == nil {
+						for _, e := range t.Events {
+							for _, seg := range e.Segs {
+								if seg.Utf8 != "\n" {
+									rawTranscript += seg.Utf8 + " "
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	var finalContent string
+
+	if rawTranscript == "" {
+		// If no transcript could be found, ask the LLM to write a general note about the title.
+		prompt := fmt.Sprintf("Aşağıdaki YouTube videosunun alt yazısı bulunamadı. Lütfen sadece bu videonun başlığına bakarak video hakkında çok genel bilgiler içeren kısa bir not oluştur.\n\nVideo Başlığı: %s", title)
+
+		apiReq := ChatCompletionRequest{
+			Model: s.ChatModel,
+			Messages: []ChatCompletionMessage{
+				{Role: "user", Content: prompt},
+			},
+		}
+		var apiResp ChatCompletionResponse
+		if err := s.makeRequest(ctx, "POST", "/chat/completions", apiReq, &apiResp); err == nil && len(apiResp.Choices) > 0 {
+			finalContent, _ = apiResp.Choices[0].Message.Content.(string)
+		} else {
+			return nil, fmt.Errorf("youtube extraction request failed: %w", err)
+		}
+	} else {
+		// Summarize raw transcript
+		prompt := fmt.Sprintf("Aşağıda bir YouTube videosunun ham transkripti verilmiştir. Lütfen bu videonun tüm içeriğini, konuşmaları ve önemli bilgileri detaylı, okunabilir bir not halinde çıkar. Sadece notları dön, başka bir şey yazma.\n\nTranskript:\n%s", rawTranscript)
+
+		apiReq := ChatCompletionRequest{
+			Model: s.ChatModel,
+			Messages: []ChatCompletionMessage{
+				{Role: "user", Content: prompt},
+			},
+		}
+		var apiResp ChatCompletionResponse
+		if err := s.makeRequest(ctx, "POST", "/chat/completions", apiReq, &apiResp); err == nil && len(apiResp.Choices) > 0 {
+			finalContent, _ = apiResp.Choices[0].Message.Content.(string)
+		} else {
+			return nil, fmt.Errorf("youtube summarization request failed: %w", err)
+		}
+	}
+
+	return &domain.ExtractionResult{
+		Text:         strings.TrimSpace(finalContent),
+		Title:        title,
+		ThumbnailUrl: thumbnailUrl,
+	}, nil
 }
 
 func (s *OpenRouterService) SolveQuestionWithReasoning(ctx context.Context, questionText string) (string, error) {

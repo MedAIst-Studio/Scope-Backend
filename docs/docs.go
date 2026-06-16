@@ -515,6 +515,51 @@ const docTemplate = `{
                 }
             }
         },
+        "/files/youtube": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Submit a YouTube link to extract its transcript and make it available for chat.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Files"
+                ],
+                "summary": "Submit a YouTube link",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.SubmitYouTubeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.SubmitYouTubeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
         "/files/{id}": {
             "get": {
                 "description": "Retrieve a file by its ID",
@@ -590,6 +635,113 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/files/{id}/extract-notes": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Extract text notes from an uploaded image file using OCR.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Files"
+                ],
+                "summary": "Extract notes from image",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "File ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ExtractNotesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/files/{id}/notes": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the extracted text for a file and re-index it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Files"
+                ],
+                "summary": "Update extracted notes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "File ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.UpdateNotesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.UpdateNotesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
                     },
                     "404": {
                         "description": "Not Found"
@@ -1548,10 +1700,24 @@ const docTemplate = `{
                 }
             }
         },
+        "domain.ExtractNotesResponse": {
+            "type": "object",
+            "properties": {
+                "extracted_text": {
+                    "type": "string"
+                },
+                "file_id": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.FileResponseDTO": {
             "type": "object",
             "properties": {
                 "created_at": {
+                    "type": "string"
+                },
+                "extracted_text": {
                     "type": "string"
                 },
                 "file_type": {
@@ -1566,6 +1732,12 @@ const docTemplate = `{
                 "size": {
                     "type": "integer"
                 },
+                "source_url": {
+                    "type": "string"
+                },
+                "thumbnail_url": {
+                    "type": "string"
+                },
                 "title": {
                     "type": "string"
                 },
@@ -1578,11 +1750,13 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "pdf",
-                "image"
+                "image",
+                "youtube"
             ],
             "x-enum-varnames": [
                 "FileTypePDF",
-                "FileTypeImage"
+                "FileTypeImage",
+                "FileTypeYouTube"
             ]
         },
         "domain.GenerateQuizRequest": {
@@ -1882,6 +2056,31 @@ const docTemplate = `{
                 }
             }
         },
+        "domain.SubmitYouTubeRequest": {
+            "type": "object",
+            "required": [
+                "url"
+            ],
+            "properties": {
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SubmitYouTubeResponse": {
+            "type": "object",
+            "properties": {
+                "file_id": {
+                    "type": "string"
+                },
+                "thumbnail_url": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.ToggleFileSavedResponse": {
             "type": "object",
             "properties": {
@@ -1895,6 +2094,28 @@ const docTemplate = `{
             "properties": {
                 "title": {
                     "type": "string"
+                }
+            }
+        },
+        "domain.UpdateNotesRequest": {
+            "type": "object",
+            "required": [
+                "text"
+            ],
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.UpdateNotesResponse": {
+            "type": "object",
+            "properties": {
+                "success": {
+                    "type": "boolean"
                 }
             }
         },

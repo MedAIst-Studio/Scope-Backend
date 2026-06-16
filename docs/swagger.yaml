@@ -92,9 +92,18 @@ definitions:
         description: '"pdf", "book", etc.'
         type: string
     type: object
+  domain.ExtractNotesResponse:
+    properties:
+      extracted_text:
+        type: string
+      file_id:
+        type: string
+    type: object
   domain.FileResponseDTO:
     properties:
       created_at:
+        type: string
+      extracted_text:
         type: string
       file_type:
         $ref: '#/definitions/domain.FileType'
@@ -104,6 +113,10 @@ definitions:
         type: boolean
       size:
         type: integer
+      source_url:
+        type: string
+      thumbnail_url:
+        type: string
       title:
         type: string
       url:
@@ -113,10 +126,12 @@ definitions:
     enum:
     - pdf
     - image
+    - youtube
     type: string
     x-enum-varnames:
     - FileTypePDF
     - FileTypeImage
+    - FileTypeYouTube
   domain.GenerateQuizRequest:
     properties:
       endPage:
@@ -314,6 +329,22 @@ definitions:
       total_questions:
         type: integer
     type: object
+  domain.SubmitYouTubeRequest:
+    properties:
+      url:
+        type: string
+    required:
+    - url
+    type: object
+  domain.SubmitYouTubeResponse:
+    properties:
+      file_id:
+        type: string
+      thumbnail_url:
+        type: string
+      title:
+        type: string
+    type: object
   domain.ToggleFileSavedResponse:
     properties:
       is_saved:
@@ -323,6 +354,20 @@ definitions:
     properties:
       title:
         type: string
+    type: object
+  domain.UpdateNotesRequest:
+    properties:
+      id:
+        type: string
+      text:
+        type: string
+    required:
+    - text
+    type: object
+  domain.UpdateNotesResponse:
+    properties:
+      success:
+        type: boolean
     type: object
   domain.UploadFileRequest:
     properties:
@@ -957,6 +1002,74 @@ paths:
       summary: Get File
       tags:
       - files
+  /files/{id}/extract-notes:
+    post:
+      consumes:
+      - application/json
+      description: Extract text notes from an uploaded image file using OCR.
+      parameters:
+      - description: File ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.ExtractNotesResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+        "500":
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: Extract notes from image
+      tags:
+      - Files
+  /files/{id}/notes:
+    put:
+      consumes:
+      - application/json
+      description: Update the extracted text for a file and re-index it.
+      parameters:
+      - description: File ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.UpdateNotesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.UpdateNotesResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+        "500":
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: Update extracted notes
+      tags:
+      - Files
   /files/{id}/save:
     patch:
       consumes:
@@ -1017,6 +1130,35 @@ paths:
       security:
       - BearerAuth: []
       summary: Upload a file
+      tags:
+      - Files
+  /files/youtube:
+    post:
+      consumes:
+      - application/json
+      description: Submit a YouTube link to extract its transcript and make it available
+        for chat.
+      parameters:
+      - description: Request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.SubmitYouTubeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.SubmitYouTubeResponse'
+        "400":
+          description: Bad Request
+        "500":
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: Submit a YouTube link
       tags:
       - Files
   /healthcheck:

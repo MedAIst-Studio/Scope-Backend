@@ -162,10 +162,16 @@ func (s *MessageService) SendMessage(ctx context.Context, userId uuid.UUID, req 
 	if req.PdfId != uuid.Nil && req.ImageUrl == "" {
 		fileMeta, err := s.Repo.GetFileMetadata(ctx, req.PdfId)
 		if err == nil {
-			if isImageFile(fileMeta.Name) {
+			if fileMeta.FileType == domain.FileTypeImage {
 				url := "uploads/" + req.PdfId.String()
 				req.ImageUrl = url
 				processImage(url)
+			} else if fileMeta.FileType == domain.FileTypeYouTube {
+				userMessage.ContextSnapshot = &domain.ContextSnapshot{
+					Type:        "youtube",
+					DocumentId:  req.PdfId.String(),
+					CachedTitle: fileMeta.Name,
+				}
 			} else {
 				userMessage.ContextSnapshot = &domain.ContextSnapshot{
 					Type:        "pdf",

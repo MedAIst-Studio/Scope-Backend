@@ -135,6 +135,8 @@ func SetupRoutes(app *fiber.App) {
 		ChatService: chatService,
 	})
 
+	textProcessor := services.NewTextProcessor(dc.Repo, dc.VectorDB, dc.Embedding, dc.Chunker, 48)
+
 	fileService := services.NewFileService(
 		dc.Repo,
 		dc.FileStorage,
@@ -143,7 +145,10 @@ func SetupRoutes(app *fiber.App) {
 		services.NewFileProcessorFactory(
 			services.NewPdfProcessor(dc.Repo, dc.FileStorage, dc.VectorDB, dc.Embedding, dc.Chunker, 48, true),
 			services.NewImageProcessor(),
+			textProcessor,
+			textProcessor,
 		),
+		dc.Embedding, // OpenRouter implements ContentExtractor
 	)
 
 	fileHandler := file.NewFileHandler(&file.FileConfig{
@@ -219,6 +224,9 @@ func SetupRoutes(app *fiber.App) {
 	filesApp.Delete("/:id", Handle(handlerAdapter[domain.DeleteFileRequest, domain.DeleteFileResponse]{fileHandler.HandleDeleteFile}, sl))
 	filesApp.Get("/:id", Handle(handlerAdapter[domain.GetFileRequest, domain.GetFileResponse]{fileHandler.HandleGetFile}, sl))
 	filesApp.Patch("/:id/save", Handle(handlerAdapter[domain.ToggleFileSavedRequest, domain.ToggleFileSavedResponse]{fileHandler.HandleToggleFileSaved}, sl))
+	filesApp.Post("/youtube", middlewareManager.UsageLimitMiddleware(domain.ActionFileUpload), Handle(handlerAdapter[domain.SubmitYouTubeRequest, domain.SubmitYouTubeResponse]{fileHandler.HandleSubmitYouTube}, sl))
+	filesApp.Post("/:id/extract-notes", middlewareManager.UsageLimitMiddleware(domain.ActionFileUpload), Handle(handlerAdapter[domain.ExtractNotesRequest, domain.ExtractNotesResponse]{fileHandler.HandleExtractNotesFromImage}, sl))
+	filesApp.Put("/:id/notes", Handle(handlerAdapter[domain.UpdateNotesRequest, domain.UpdateNotesResponse]{fileHandler.HandleUpdateNotes}, sl))
 	messagesApp := app.Group("/messages", middlewareManager.AuthMiddleware)
 	messagesApp.Post("/", middlewareManager.MessageUsageLimitMiddleware(), Handle(handlerAdapter[domain.SendMessageRequest, domain.SendMessageResponse]{messageHandler.HandleSendMessage}, sl))
 

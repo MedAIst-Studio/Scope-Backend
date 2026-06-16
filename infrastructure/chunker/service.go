@@ -159,6 +159,40 @@ func (s *PdfChunkingService) ChunkPDF(ctx context.Context, fileBytes []byte, fil
 	return chunks, nil
 }
 
+func (s *PdfChunkingService) ChunkText(ctx context.Context, text string, fileID string) ([]domain.Chunk, error) {
+	// Context cancellation check
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	if len(text) == 0 {
+		return nil, ErrEmptyPDF
+	}
+
+	cleanedText := s.enhancedCleanText(text)
+
+	if len(cleanedText) == 0 {
+		return nil, ErrInsufficientText
+	}
+
+	// For simple text, we don't have page numbers, so we create a dummy page range
+	dummyPageRanges := []pageRange{
+		{pageNum: 1, start: 0, end: len(cleanedText)},
+	}
+
+	chunks := s.semanticChunking(cleanedText, dummyPageRanges, fileID)
+
+	if len(chunks) == 0 {
+		return nil, errors.New("chunk oluşturulamadı: text segmentation hatası")
+	}
+
+	chunks = s.postProcessChunks(chunks)
+
+	return chunks, nil
+}
+
 type extractedData struct {
 	fullText   string
 	pageRanges []pageRange

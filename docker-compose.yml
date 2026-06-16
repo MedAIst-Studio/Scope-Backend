@@ -10,24 +10,29 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
     restart: unless-stopped
+    networks:
+      - scope_net
 
   api:
-    image: golang:1.24.5-alpine3.22
+    image: golang:1.26-alpine
     working_dir: /app
     volumes:
       - .:/app
       - go-mod:/go/pkg/mod
     ports:
-      - "3000:3000"
+      - "8080:8080"
     command: ["go", "run", "./cmd/main.go"]
     restart: unless-stopped
     depends_on:
       - db
     env_file:
       - .env
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+    networks:
+      - scope_net
+
+networks:
+  scope_net:
+    driver: bridge
 
 volumes:
   go-mod:

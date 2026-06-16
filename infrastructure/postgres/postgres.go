@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"database/sql"
+	"log"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -16,8 +18,17 @@ func NewDB(databaseUrl string) *sql.DB {
 		panic("Failed to open database: " + err.Error())
 	}
 
-	if err := db.Ping(); err != nil {
-		panic("Failed to connect to the database: " + err.Error())
+	for i := 0; i < 10; i++ {
+		err = db.Ping()
+		if err == nil {
+			break
+		}
+		log.Printf("Failed to connect to the database, retrying in 2 seconds... (%d/10): %v", i+1, err)
+		time.Sleep(2 * time.Second)
+	}
+
+	if err != nil {
+		panic("Failed to connect to the database after 10 attempts: " + err.Error())
 	}
 
 	runTableMigrations(db)
@@ -35,8 +46,11 @@ CREATE TABLE IF NOT EXISTS  users (
     email TEXT NOT NULL UNIQUE,
     fcm_token TEXT DEFAULT NULL,
     password TEXT, -- encrypted
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMP NOT NULL,
+    preferences JSONB DEFAULT NULL
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT NULL;
 
 -- USAGE STATS TABLE
 CREATE TABLE IF NOT EXISTS usage_stats (
@@ -67,7 +81,10 @@ CREATE TABLE IF NOT EXISTS  files (
     path TEXT NOT NULL UNIQUE,
     created_at TIMESTAMP NOT NULL,
     file_type TEXT NOT NULL DEFAULT 'pdf',
-    is_saved BOOLEAN NOT NULL DEFAULT FALSE
+    is_saved BOOLEAN NOT NULL DEFAULT FALSE,
+    source_url TEXT,
+    extracted_text TEXT,
+    thumbnail_url TEXT
 );
 
 -- REFRESH TOKENS
@@ -218,6 +235,9 @@ CREATE TABLE IF NOT EXISTS usage_tracking (
 	-- Add file_type and is_saved columns if they don't exist
 	ALTER TABLE files ADD COLUMN IF NOT EXISTS file_type TEXT NOT NULL DEFAULT 'pdf';
 	ALTER TABLE files ADD COLUMN IF NOT EXISTS is_saved BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE files ADD COLUMN IF NOT EXISTS source_url TEXT;
+	ALTER TABLE files ADD COLUMN IF NOT EXISTS extracted_text TEXT;
+	ALTER TABLE files ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;
 
 	-- Backfill: classify existing files by extension
 	UPDATE files SET file_type = 'image'

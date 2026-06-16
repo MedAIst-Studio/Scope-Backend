@@ -15,8 +15,9 @@ import (
 type FileType string
 
 const (
-	FileTypePDF   FileType = "pdf"
-	FileTypeImage FileType = "image"
+	FileTypePDF     FileType = "pdf"
+	FileTypeImage   FileType = "image"
+	FileTypeYouTube FileType = "youtube"
 )
 
 // DetectFileType returns the file type based on the file extension.
@@ -33,14 +34,17 @@ func DetectFileType(filename string) FileType {
 // ---------- File Model ----------
 
 type File struct {
-	Id        uuid.UUID
-	UserId    uuid.UUID
-	Name      string
-	Size      int64
-	Path      string
-	CreatedAt time.Time
-	FileType  FileType
-	IsSaved   bool
+	Id            uuid.UUID
+	UserId        uuid.UUID
+	Name          string
+	Size          int64
+	Path          string
+	CreatedAt     time.Time
+	FileType      FileType
+	IsSaved       bool
+	SourceURL     *string
+	ExtractedText *string
+	ThumbnailUrl  *string
 }
 
 // ---------- File DTOs ----------
@@ -58,13 +62,16 @@ type GetFilesRequest struct{}
 type GetFilesResponse []FileResponseDTO
 
 type FileResponseDTO struct {
-	Id        uuid.UUID `json:"id"`
-	Title     string    `json:"title"`
-	Size      int64     `json:"size"`
-	Url       string    `json:"url"`
-	CreatedAt time.Time `json:"created_at"`
-	FileType  FileType  `json:"file_type"`
-	IsSaved   bool      `json:"is_saved"`
+	Id            uuid.UUID `json:"id"`
+	Title         string    `json:"title"`
+	Size          int64     `json:"size"`
+	Url           string    `json:"url"`
+	CreatedAt     time.Time `json:"created_at"`
+	FileType      FileType  `json:"file_type"`
+	IsSaved       bool      `json:"is_saved"`
+	SourceURL     *string   `json:"source_url,omitempty"`
+	ExtractedText *string   `json:"extracted_text,omitempty"`
+	ThumbnailUrl  *string   `json:"thumbnail_url,omitempty"`
 }
 
 type GetFileRequest struct {
@@ -89,6 +96,34 @@ type ToggleFileSavedResponse struct {
 	IsSaved bool `json:"is_saved"`
 }
 
+type SubmitYouTubeRequest struct {
+	Url string `json:"url" validate:"required,url"`
+}
+
+type SubmitYouTubeResponse struct {
+	FileId       uuid.UUID `json:"file_id"`
+	Title        string    `json:"title"`
+	ThumbnailUrl string    `json:"thumbnail_url"`
+}
+
+type ExtractNotesRequest struct {
+	Id uuid.UUID `params:"id"`
+}
+
+type ExtractNotesResponse struct {
+	FileId        uuid.UUID `json:"file_id"`
+	ExtractedText string    `json:"extracted_text"`
+}
+
+type UpdateNotesRequest struct {
+	Id   uuid.UUID `params:"id"`
+	Text string    `json:"text" validate:"required"`
+}
+
+type UpdateNotesResponse struct {
+	Success bool `json:"success"`
+}
+
 // ---------- File Interfaces ----------
 
 type FileRepository interface {
@@ -101,6 +136,7 @@ type FileRepository interface {
 	GetExpiredUnsavedImages(ctx context.Context, olderThan time.Time) ([]File, error)
 	DeleteFilesByIDs(ctx context.Context, ids []uuid.UUID) error
 	GetUserPDFCount(ctx context.Context, userID uuid.UUID) (int, error)
+	UpdateExtractedText(ctx context.Context, fileId uuid.UUID, text string) error
 }
 
 type FileStorageService interface {
@@ -117,6 +153,20 @@ type FileService interface {
 	GetFile(ctx context.Context, userId uuid.UUID, fileId uuid.UUID) (*GetFileResponse, error)
 	DeleteFile(ctx context.Context, fileId uuid.UUID) error
 	ToggleFileSaved(ctx context.Context, userId uuid.UUID, fileId uuid.UUID) (*ToggleFileSavedResponse, error)
+	SubmitYouTubeLink(ctx context.Context, userId uuid.UUID, url string) (*SubmitYouTubeResponse, error)
+	ExtractNotesFromImage(ctx context.Context, userId uuid.UUID, fileId uuid.UUID) (*ExtractNotesResponse, error)
+	UpdateNotes(ctx context.Context, userId uuid.UUID, fileId uuid.UUID, text string) (*UpdateNotesResponse, error)
+}
+
+type ExtractionResult struct {
+	Text         string
+	Title        string
+	ThumbnailUrl string
+}
+
+type ContentExtractor interface {
+	ExtractFromYouTube(ctx context.Context, url string) (*ExtractionResult, error)
+	ExtractFromImage(ctx context.Context, imageBase64 string) (*ExtractionResult, error)
 }
 
 // ---------- Embedding & Chunker Interfaces and Models ----------
@@ -141,6 +191,7 @@ type EmbeddingService interface {
 
 type Chunker interface {
 	ChunkPDF(ctx context.Context, fileBytes []byte, fileID string) ([]Chunk, error)
+	ChunkText(ctx context.Context, text string, fileID string) ([]Chunk, error)
 }
 
 type Chunk struct {
