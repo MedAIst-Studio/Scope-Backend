@@ -137,6 +137,11 @@ func SetupRoutes(app *fiber.App) {
 
 	textProcessor := services.NewTextProcessor(dc.Repo, dc.VectorDB, dc.Embedding, dc.Chunker, 48)
 
+	audioProcessor := services.NewAudioProcessor(
+		dc.Repo, dc.VectorDB, dc.Embedding, dc.Chunker,
+		dc.Whisper, textProcessor, 48,
+	)
+
 	fileService := services.NewFileService(
 		dc.Repo,
 		dc.FileStorage,
@@ -147,6 +152,7 @@ func SetupRoutes(app *fiber.App) {
 			services.NewImageProcessor(),
 			textProcessor,
 			textProcessor,
+			audioProcessor,
 		),
 		dc.Embedding, // OpenRouter implements ContentExtractor
 	)

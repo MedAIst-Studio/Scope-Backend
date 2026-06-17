@@ -328,6 +328,7 @@ type FileProcessorFactory struct {
 	ImageProcessor      domain.FileProcessor
 	YouTubeProcessor    domain.FileProcessor
 	ImageNotesProcessor domain.FileProcessor
+	AudioProcessor      domain.FileProcessor
 }
 
 func NewFileProcessorFactory(
@@ -335,12 +336,14 @@ func NewFileProcessorFactory(
 	imageProcessor domain.FileProcessor,
 	youtubeProcessor domain.FileProcessor,
 	imageNotesProcessor domain.FileProcessor,
+	audioProcessor domain.FileProcessor,
 ) *FileProcessorFactory {
 	return &FileProcessorFactory{
 		PdfProcessor:        pdfProcessor,
 		ImageProcessor:      imageProcessor,
 		YouTubeProcessor:    youtubeProcessor,
 		ImageNotesProcessor: imageNotesProcessor,
+		AudioProcessor:      audioProcessor,
 	}
 }
 
@@ -354,6 +357,8 @@ func (f *FileProcessorFactory) GetProcessor(filename string) (domain.FileProcess
 		return f.PdfProcessor, nil
 	case ".jpg", ".jpeg", ".png", ".webp":
 		return f.ImageProcessor, nil
+	case ".m4a", ".mp3", ".wav", ".webm":
+		return f.AudioProcessor, nil
 	default:
 		return nil, errors.New("unsupported file type: " + ext)
 	}
@@ -623,3 +628,79 @@ func isImageFile(filename string) bool {
 		return false
 	}
 }
+
+func isAudioFile(filename string) bool {
+	ext := strings.ToLower(getFileExtension(filename))
+	switch ext {
+	case ".m4a", ".mp3", ".wav", ".webm":
+		return true
+	default:
+		return false
+	}
+}
+
+// ---------- Audio Processor ----------
+
+type AudioProcessor struct {
+	Repo        domain.FileRepository
+	Vb          domain.VectorDB
+	Ems         domain.EmbeddingService
+	Chunker     domain.Chunker
+	Transcriber domain.AudioTranscriber
+	TextProc    *TextProcessor
+	BatchSize   int
+}
+
+func NewAudioProcessor(
+	repo domain.FileRepository,
+	vb domain.VectorDB,
+	ems domain.EmbeddingService,
+	chunker domain.Chunker,
+	transcriber domain.AudioTranscriber,
+	textProc *TextProcessor,
+	batchSize int,
+) *AudioProcessor {
+	return &AudioProcessor{
+		Repo:        repo,
+		Vb:          vb,
+		Ems:         ems,
+		Chunker:     chunker,
+		Transcriber: transcriber,
+		TextProc:    textProc,
+		BatchSize:   batchSize,
+	}
+}
+
+func (p *AudioProcessor) Process(ctx context.Context, f *domain.File, content []byte) error {
+	// Background processing so we don't block the request
+	go func() {
+		bgCtx := context.Background()
+
+		// 1. Detect format
+		format := getFileExtension(f.Name)
+
+		// 2. Transcribe
+		result, err := p.Transcriber.Transcribe(bgCtx, content, format)
+		if err != nil {
+			fmt.Printf("Audio transcription failed for file %s: %v\n", f.Id, err)
+			return // Cannot proceed without transcription
+		}
+
+		// 3. Update Extracted Text
+		if err := p.Repo.UpdateExtractedText(bgCtx, f.Id, result.Text); err != nil {
+			fmt.Printf("Failed to update extracted text for file %s: %v\n", f.Id, err)
+			return
+		}
+
+		// 4. Delegate to TextProcessor for chunking and embedding
+		if p.TextProc != nil {
+			err = p.TextProc.Process(bgCtx, f, []byte(result.Text))
+			if err != nil {
+				fmt.Printf("Audio text processing failed for file %s: %v\n", f.Id, err)
+			}
+		}
+	}()
+
+	return nil
+}
+

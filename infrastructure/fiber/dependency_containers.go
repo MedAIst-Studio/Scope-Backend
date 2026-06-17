@@ -11,6 +11,7 @@ import (
 	firebaseInfra "github.com/MedAIst-Studio/MedAIist-Backend/infrastructure/firebase"
 	"github.com/MedAIst-Studio/MedAIist-Backend/infrastructure/jina"
 	"github.com/MedAIst-Studio/MedAIist-Backend/infrastructure/openrouter"
+	whisperInfra "github.com/MedAIst-Studio/MedAIist-Backend/infrastructure/whisper"
 	"github.com/MedAIst-Studio/MedAIist-Backend/services"
 
 	inMemoryInfra "github.com/MedAIst-Studio/MedAIist-Backend/infrastructure/in-memory"
@@ -37,6 +38,7 @@ type DependencyContainer struct {
 	Validator           *validatorInfra.Validator
 	mailerSender        *mailersendInfra.MailerSendService
 	AIService           *MultiModelService
+	Whisper             domain.AudioTranscriber
 	Notification        *services.NotificationService
 	SubscriptionService *services.SubscriptionService
 }
@@ -102,6 +104,8 @@ func NewAuthDependencyContainer() *DependencyContainer {
 		Service:           jina,
 	}
 
+	whisperService := whisperInfra.NewWhisperService(getEnv("WHISPER_API_KEY", ""))
+
 	slogLogger := slogInfra.NewLogger()
 	validator := validatorInfra.NewValidator(slogLogger)
 
@@ -136,6 +140,7 @@ func NewAuthDependencyContainer() *DependencyContainer {
 		slogLogger:          slogLogger,
 		mailerSender:        mailersendService,
 		AIService:           aiService,
+		Whisper:             whisperService,
 		Notification:        notifService,
 		SubscriptionService: subscriptionService,
 	}

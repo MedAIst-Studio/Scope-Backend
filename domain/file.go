@@ -18,6 +18,7 @@ const (
 	FileTypePDF     FileType = "pdf"
 	FileTypeImage   FileType = "image"
 	FileTypeYouTube FileType = "youtube"
+	FileTypeAudio   FileType = "audio"
 )
 
 // DetectFileType returns the file type based on the file extension.
@@ -26,6 +27,8 @@ func DetectFileType(filename string) FileType {
 	switch ext {
 	case ".jpg", ".jpeg", ".png", ".webp":
 		return FileTypeImage
+	case ".m4a", ".mp3", ".wav", ".webm":
+		return FileTypeAudio
 	default:
 		return FileTypePDF
 	}
@@ -167,6 +170,16 @@ type ExtractionResult struct {
 type ContentExtractor interface {
 	ExtractFromYouTube(ctx context.Context, url string) (*ExtractionResult, error)
 	ExtractFromImage(ctx context.Context, imageBase64 string) (*ExtractionResult, error)
+}
+
+type TranscriptionResult struct {
+	Text     string
+	Language string
+	Duration float64
+}
+
+type AudioTranscriber interface {
+	Transcribe(ctx context.Context, audioBytes []byte, format string) (*TranscriptionResult, error)
 }
 
 // ---------- Embedding & Chunker Interfaces and Models ----------
